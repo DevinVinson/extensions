@@ -910,6 +910,16 @@
       "source": "./skills/github-stale-ci-pr-closer",
       "description": "Warn and close abandoned pull requests whose required CI remains failing.",
       "category": "automations"
+    },
+    {
+      "name": "use-jev",
+      "source": "./skills/use-jev",
+      "description": "Use Jev, a general classifier, for typed choices, scores, and yes/no probabilities in software.",
+      "category": "integrations",
+      "keywords": [
+        "jev",
+        "classification"
+      ]
     }
   ]
 }
