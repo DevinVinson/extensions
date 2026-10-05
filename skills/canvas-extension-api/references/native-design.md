@@ -1,4 +1,4 @@
-# Native Agent Canvas App design
+# Native OpenHands App design
 
 Build Apps for Agent Canvas that visually belong in the host while remaining a self-contained, safe extension package. Use this reference together with the main `SKILL.md` workflow before changing an App's UI.
 
@@ -41,6 +41,7 @@ For Tailwind v4, place an App-local mapping in the App stylesheet. This lets the
   --color-border: var(--oh-border);
   --color-border-subtle: var(--oh-border-subtle);
   --color-focus: var(--oh-focus);
+  --color-interactive-hover: var(--oh-interactive-hover);
   --color-primary: var(--oh-color-primary);
   --color-on-primary: var(--oh-accent-foreground);
   --color-danger: var(--oh-danger);
