@@ -54,6 +54,7 @@ export class BoardStore {
   constructor(host) {
     this.host = host;
     this.rootPromise = null;
+    this.metadataWrites = new Map();
   }
 
   /** Absolute boards directory, resolved from the server's home once. */
@@ -162,11 +163,20 @@ export class BoardStore {
 
   /** Read-modify-write of meta.json; returns the stored metadata. */
   async updateMeta(id, changes) {
-    const { id: _, ...current } = await this.readMeta(id);
-    const next = { ...current, ...changes };
-    if (!next.archived) delete next.archived;
-    await this.writeFile(await this.boardDir(id), "meta.json", JSON.stringify(next, null, 2));
-    return { id, ...next };
+    const previous = this.metadataWrites.get(id) ?? Promise.resolve();
+    const write = previous.catch(() => {}).then(async () => {
+      const { id: _, ...current } = await this.readMeta(id);
+      const next = { ...current, ...changes };
+      if (!next.archived) delete next.archived;
+      await this.writeFile(await this.boardDir(id), "meta.json", JSON.stringify(next, null, 2));
+      return { id, ...next };
+    });
+    this.metadataWrites.set(id, write);
+    try {
+      return await write;
+    } finally {
+      if (this.metadataWrites.get(id) === write) this.metadataWrites.delete(id);
+    }
   }
 
   async create(title) {

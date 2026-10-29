@@ -159,6 +159,7 @@ export function activate(host) {
     throw new Error(`Whiteboard requires Canvas host API 1, received ${host.apiVersion}.`);
   }
   const store = new BoardStore(host);
+  const saves = new Map();
   const themeKey = `${THEME_KEY_PREFIX}:${host.backend.id}`;
   const lastBoardKey = `${LAST_BOARD_KEY_PREFIX}:${host.backend.id}`;
   const pageRoot = `/extensions/${encodeURIComponent(host.extension.name)}/boards`;
@@ -168,9 +169,7 @@ export function activate(host) {
     let disposed = false;
     let unmountBoard = null;
     let saveTimer = null;
-    let pending = null; // latest unsaved serialization
     let lastSignature = null;
-    let saving = Promise.resolve();
     let metaRefreshedAt = 0;
     let picker = null;
 
@@ -204,6 +203,12 @@ export function activate(host) {
       };
     }
 
+    // Save ordering and failed edits must survive navigation between mounts.
+    if (!saves.has(boardId)) {
+      saves.set(boardId, { pending: null, revision: 0, saving: Promise.resolve() });
+    }
+    const save = saves.get(boardId);
+
     /* Saving also stamps meta.json with the update time (which orders the
        board list), at most once a minute per mount. The first save of a
        board that has no metadata yet creates it. */
@@ -218,24 +223,24 @@ export function activate(host) {
     const flush = () => {
       clearTimeout(saveTimer);
       saveTimer = null;
-      if (!pending) return saving;
-      const json = pending;
-      pending = null;
-      saving = saving
-        .then(() => store.save(boardId, json))
+      if (!save.pending) return save.saving;
+      const snapshot = save.pending;
+      save.pending = null;
+      save.saving = save.saving
+        .then(() => store.save(boardId, snapshot.json))
         .then(() => refreshMeta().catch(() => {
           // The drawing is saved; a stale list order is not worth an error.
           metaRefreshedAt = 0;
         }))
         .then(
-          () => { if (!disposed && !pending) setStatus("saved", "Saved"); },
+          () => { if (!disposed && save.revision === snapshot.revision && !save.pending) setStatus("saved", "Saved"); },
           (err) => {
-            // Keep the newest unsaved scene so the next edit or unmount retries it.
-            pending ??= json;
-            if (!disposed) setStatus("error", `Save failed: ${err.message}`);
+            // A newer edit may already be queued rather than pending.
+            if (save.revision === snapshot.revision) save.pending ??= snapshot;
+            if (!disposed && save.revision === snapshot.revision) setStatus("error", `Save failed: ${err.message}`);
           },
         );
-      return saving;
+      return save.saving;
     };
 
     const start = async () => {
@@ -245,7 +250,10 @@ export function activate(host) {
         // (heavy, irrelevant in that case) board module loaded successfully.
         const [boardResult, sceneResult, metaResult] = await Promise.allSettled([
           loadBoardModule(),
-          store.load(boardId),
+          (async () => {
+            await flush();
+            return save.pending ? JSON.parse(save.pending.json) : store.load(boardId);
+          })(),
           store.readMeta(boardId),
         ]);
         if (disposed) return;
@@ -283,7 +291,8 @@ export function activate(host) {
         const scene = sceneResult.value;
         writeLocal(lastBoardKey, boardId);
         root.replaceChildren();
-        setStatus("saved", scene ? "Saved" : "New board");
+        if (save.pending) setStatus("error", "Save failed: unsaved edits retained; edit to retry.");
+        else setStatus("saved", scene ? "Saved" : "New board");
         picker?.dispose();
         picker = createBoardPicker({
           store,
@@ -324,7 +333,10 @@ export function activate(host) {
             }
             if (signature === lastSignature) return;
             lastSignature = signature;
-            pending = board.serializeAsJSON(elements, appState, files, "local");
+            save.pending = {
+              revision: ++save.revision,
+              json: board.serializeAsJSON(elements, appState, files, "local"),
+            };
             setStatus("saving", "Saving…");
             clearTimeout(saveTimer);
             saveTimer = setTimeout(flush, SAVE_DELAY_MS);

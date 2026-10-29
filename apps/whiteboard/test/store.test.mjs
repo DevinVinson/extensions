@@ -125,6 +125,42 @@ describe("BoardStore", () => {
     await assert.rejects(store.rename(first.id, "   "), /needs a name/);
   });
 
+  it("preserves all concurrent metadata updates for a board", async () => {
+    const { host } = fakeServer();
+    const store = new BoardStore(host);
+    await Promise.all([
+      store.updateMeta("default", { updatedAt: "2026-01-01" }),
+      store.rename("default", "Launch plan"),
+      store.archive("default"),
+    ]);
+    const meta = await store.readMeta("default");
+    assert.equal(meta.updatedAt, "2026-01-01");
+    assert.equal(meta.title, "Launch plan");
+    assert.equal(meta.archived, true);
+  });
+
+  it("continues metadata updates after an upload failure", async () => {
+    const { host } = fakeServer();
+    const request = host.agentServer.request;
+    let fail = true;
+    // Fail only the transport; exercise the real store's queued recovery.
+    host.agentServer.request = async (req) => {
+      if (fail && req.path.startsWith("/api/file/upload")) {
+        fail = false;
+        throw new Error("Controlled upload failure");
+      }
+      return request(req);
+    };
+    const store = new BoardStore(host);
+    const failed = store.rename("default", "Failed title");
+    const archived = store.archive("default");
+    await assert.rejects(failed, /Controlled upload failure/);
+    await archived;
+    assert.equal((await store.readMeta("default")).archived, true);
+    await store.rename("default", "Recovered title");
+    assert.equal((await store.readMeta("default")).title, "Recovered title");
+  });
+
   it("treats unreadable metadata as missing", async () => {
     const { host } = fakeServer({ [`${ROOT}/default/meta.json`]: "{not json" });
     assert.deepEqual(await new BoardStore(host).readMeta("default"), {
