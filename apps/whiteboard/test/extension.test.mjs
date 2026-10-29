@@ -109,6 +109,75 @@ describe("whiteboard bundle", () => {
     assert.equal(container.childElementCount, 0);
   });
 
+  it("redirects away from an archived default board when another board exists", async () => {
+    const files = {
+      "/home/test/.openhands/apps/whiteboard/boards/default/meta.json": JSON.stringify({
+        title: "Default",
+        archived: true,
+      }),
+      "/home/test/.openhands/apps/whiteboard/boards/notes/meta.json": JSON.stringify({
+        title: "Notes",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        updatedAt: "2024-01-02T00:00:00.000Z",
+      }),
+    };
+    const { host, registrations } = makeHost({
+      request: async (req) => {
+        if (req.path === "/api/file/home") return { home: "/home/test" };
+        if (req.path.startsWith("/api/file/search_subdirs")) return { items: [{ name: "notes" }] };
+        if (req.path.startsWith("/api/file/download")) {
+          const filePath = new URL(req.path, "http://x").searchParams.get("path");
+          if (filePath in files) return files[filePath];
+          const err = new Error("Not Found");
+          err.status = 404;
+          throw err;
+        }
+        throw new Error(`unexpected request: ${req.path}`);
+      },
+    });
+    activate(host);
+    const navigations = [];
+    const container = document.createElement("div");
+    // The root route resolves to "default" (no last-board preference), which is archived.
+    registrations.get("board")({ container, path: "", navigate: (path) => navigations.push(path) });
+    await waitFor(() => navigations.length > 0);
+    assert.deepEqual(navigations, ["/extensions/whiteboard/boards/notes"]);
+  });
+
+  it("offers to create a board when every board is archived, instead of reopening the archived default", async () => {
+    const files = {
+      "/home/test/.openhands/apps/whiteboard/boards/default/meta.json": JSON.stringify({
+        title: "Default",
+        archived: true,
+      }),
+    };
+    const { host, registrations } = makeHost({
+      request: async (req) => {
+        if (req.path === "/api/file/home") return { home: "/home/test" };
+        if (req.path.startsWith("/api/file/search_subdirs")) return { items: [] };
+        if (req.method === "POST") return {};
+        if (req.path.startsWith("/api/file/download")) {
+          const filePath = new URL(req.path, "http://x").searchParams.get("path");
+          if (filePath in files) return files[filePath];
+          const err = new Error("Not Found");
+          err.status = 404;
+          throw err;
+        }
+        throw new Error(`unexpected request: ${req.path}`);
+      },
+    });
+    activate(host);
+    const navigations = [];
+    const container = document.createElement("div");
+    registrations.get("board")({ container, path: "", navigate: (path) => navigations.push(path) });
+    await waitFor(() => container.querySelector("button"));
+    assert.match(container.textContent, /All boards are archived/);
+    assert.equal(container.querySelector("button").textContent, "Create a board");
+    container.querySelector("button").click();
+    await waitFor(() => navigations.length > 0);
+    assert.match(navigations[0], /^\/extensions\/whiteboard\/boards\/untitled-board-[0-9a-z]{4}$/);
+  });
+
   it("maps routes to board ids", () => {
     assert.equal(__testing.boardIdFromPath(""), "default");
     assert.equal(__testing.boardIdFromPath("sprint-plan/"), "sprint-plan");

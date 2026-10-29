@@ -204,8 +204,6 @@ export function activate(host) {
       };
     }
 
-    writeLocal(lastBoardKey, boardId);
-
     /* Saving also stamps meta.json with the update time (which orders the
        board list), at most once a minute per mount. The first save of a
        board that has no metadata yet creates it. */
@@ -243,12 +241,47 @@ export function activate(host) {
     const start = async () => {
       stateMessage(root, "Loading whiteboard…");
       try {
-        const [board, scene, meta] = await Promise.all([
+        // allSettled: an archived board redirects regardless of whether the
+        // (heavy, irrelevant in that case) board module loaded successfully.
+        const [boardResult, sceneResult, metaResult] = await Promise.allSettled([
           loadBoardModule(),
           store.load(boardId),
-          store.readMeta(boardId).catch(() => ({ title: titleFromId(boardId) })),
+          store.readMeta(boardId),
         ]);
         if (disposed) return;
+        const meta = metaResult.status === "fulfilled" ? metaResult.value : { title: titleFromId(boardId) };
+        if (meta.archived) {
+          const visible = await store.list().catch(() => []);
+          if (disposed) return;
+          if (visible[0]) {
+            navigate(boardRoute(visible[0].id));
+            return;
+          }
+          stateMessage(root, "All boards are archived.", {
+            action: {
+              label: "Create a board",
+              onClick: async () => {
+                try {
+                  const created = await store.create();
+                  if (!disposed) navigate(boardRoute(created.id));
+                } catch (err) {
+                  if (!disposed) {
+                    stateMessage(root, `Could not create a board: ${err.message}`, {
+                      alert: true,
+                      action: { label: "Try again", onClick: start },
+                    });
+                  }
+                }
+              },
+            },
+          });
+          return;
+        }
+        if (boardResult.status === "rejected") throw boardResult.reason;
+        if (sceneResult.status === "rejected") throw sceneResult.reason;
+        const board = boardResult.value;
+        const scene = sceneResult.value;
+        writeLocal(lastBoardKey, boardId);
         root.replaceChildren();
         setStatus("saved", scene ? "Saved" : "New board");
         picker?.dispose();
@@ -260,6 +293,8 @@ export function activate(host) {
             if (readLocal(lastBoardKey) === id) writeLocal(lastBoardKey, null);
             const remaining = await store.list().catch(() => []);
             if (disposed) return;
+            // When nothing remains, pageRoot falls back to DEFAULT_BOARD, which
+            // start() now recognizes as archived rather than silently reopening it.
             navigate(remaining[0] ? boardRoute(remaining[0].id) : pageRoot);
           },
         });
