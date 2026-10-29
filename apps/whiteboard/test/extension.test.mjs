@@ -80,7 +80,7 @@ describe("whiteboard bundle", () => {
     });
     assert.match(container.querySelector('[role="alert"]').textContent, /not a valid board name/);
     container.querySelector("button").click();
-    assert.deepEqual(navigations, ["/extensions/whiteboard/whiteboard"]);
+    assert.deepEqual(navigations, ["/extensions/whiteboard/boards"]);
     cleanup();
     assert.equal(container.childElementCount, 0);
   });

@@ -116,7 +116,7 @@ try {
     meta: [...window.smoke.files].find(([file]) => file.endsWith("/meta.json") && !file.includes("/default/")),
     selectionTool: document.querySelector("[data-testid='toolbar-selection']")?.checked,
   }));
-  if (!/^\/extensions\/whiteboard\/whiteboard\/sprint-plan-[a-z0-9]{4}$/.test(created.navigations[0])) {
+  if (!/^\/extensions\/whiteboard\/boards\/sprint-plan-[a-z0-9]{4}$/.test(created.navigations[0])) {
     throw new Error(`Picker did not open the new board: ${JSON.stringify(created.navigations)}`);
   }
   if (!created.meta || JSON.parse(created.meta[1]).title !== "Sprint plan") {

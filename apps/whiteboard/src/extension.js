@@ -161,7 +161,7 @@ export function activate(host) {
   const store = new BoardStore(host);
   const themeKey = `${THEME_KEY_PREFIX}:${host.backend.id}`;
   const lastBoardKey = `${LAST_BOARD_KEY_PREFIX}:${host.backend.id}`;
-  const pageRoot = `/extensions/${encodeURIComponent(host.extension.name)}/whiteboard`;
+  const pageRoot = `/extensions/${encodeURIComponent(host.extension.name)}/boards`;
   const boardRoute = (id) => `${pageRoot}/${id}`;
 
   return host.registerPage(PAGE_ID, ({ container, path, navigate }) => {

@@ -10,7 +10,7 @@
       {
         "id": "board",
         "title": "Whiteboard",
-        "path": "/whiteboard",
+        "path": "/boards",
         "nav_label": "Whiteboard",
         "description": "Sketch diagrams with Excalidraw."
       }

@@ -12,10 +12,10 @@ and the path `apps/whiteboard`.
 
 ## Pages and boards
 
-The manifest declares one `board` page at `/whiteboard`.
+The manifest declares one `board` page at `/boards`, so board URLs read `/extensions/whiteboard/boards/<id>`: `whiteboard` is the App name and `boards` the page path.
 
-- `/extensions/whiteboard/whiteboard` reopens the last board you used in this browser (the `default` board the first time).
-- `/extensions/whiteboard/whiteboard/<id>` opens a specific board. Ids use lowercase letters, digits, and hyphens.
+- `/extensions/whiteboard/boards` reopens the last board you used in this browser (the `default` board the first time).
+- `/extensions/whiteboard/boards/<id>` opens a specific board. Ids use lowercase letters, digits, and hyphens.
 
 The board button next to Excalidraw's main-menu button opens the board picker. (In Excalidraw's compact layout, where the menu moves to the bottom bar, the button sits in the top toolbar instead.)
 
