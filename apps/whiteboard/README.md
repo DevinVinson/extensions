@@ -14,10 +14,26 @@ and the path `apps/whiteboard`.
 
 The manifest declares one `board` page at `/whiteboard`.
 
-- `/extensions/whiteboard/whiteboard` opens the `default` board.
-- `/extensions/whiteboard/whiteboard/<name>` opens (or creates) the board `<name>`. Names use lowercase letters, digits, and hyphens.
+- `/extensions/whiteboard/whiteboard` reopens the last board you used in this browser (the `default` board the first time).
+- `/extensions/whiteboard/whiteboard/<id>` opens a specific board. Ids use lowercase letters, digits, and hyphens.
 
-Each board is stored at `<agent-server-home>/.openhands/apps/whiteboard/boards/<name>.excalidraw` through the Agent Server file API. Edits are saved about a second after the drawing changes and when the page unmounts; pointer movement, zoom, and selection do not trigger writes. The light/dark theme is not part of an `.excalidraw` file, so it is remembered per browser and backend in `localStorage`.
+The board button in Excalidraw's top-right toolbar opens the board picker:
+
+- **Switch**: lists boards, most recently edited first.
+- **Create**: name a board. Its id is derived from the name plus a short random suffix (for example `sprint-plan-k3x9`).
+- **Rename board**: changes the title; the id and URL stay the same.
+- **Archive board**: hides the board from the list after a confirmation. The Agent Server file API has no delete, so its files stay on disk.
+
+## Storage
+
+Each board is a directory below `<agent-server-home>/.openhands/apps/whiteboard/boards/<id>/`:
+
+- `board.excalidraw`: a standard Excalidraw document.
+- `meta.json`: `{ "title", "createdAt", "updatedAt", "archived"? }`.
+
+The file API can list directories but not files, so the board list comes from those directories rather than a shared index. That also means two tabs creating boards never write the same file. A board directory without `meta.json` still appears, titled from its id.
+
+Edits are saved about a second after the drawing changes and when the page unmounts. Pointer movement, zoom, and selection do not trigger writes. Saving refreshes `updatedAt` at most once a minute. The light/dark theme is not part of an `.excalidraw` file, so it is remembered per browser and backend in `localStorage`, together with the last board opened.
 
 Two tabs editing the same board overwrite each other (last write wins).
 
@@ -48,6 +64,6 @@ npm ci
 npm run check
 ```
 
-`npm run build` writes the checked-in `extension.js`. `npm test` runs the unit tests against the built bundle and the store. `npm run test:blob` imports the bundle from a Blob URL in headless Chrome, draws a rectangle, checks the autosave upload, and verifies cleanup and remounting. It also fails if the page makes any network request.
+`npm run build` writes the checked-in `extension.js`. `npm test` runs the unit tests against the built bundle and the store. `npm run test:blob` imports the bundle from a Blob URL in headless Chrome, draws a rectangle, checks the autosave upload, creates a board from the picker with real keystrokes, and verifies cleanup and remounting. It also fails if the page makes any network request.
 
 To test in a local Agent Canvas, install this directory as a local path from **Customize → Apps → Add app**, enable it, and open **Whiteboard** in the sidebar. After rebuilding, use **Update** on the App card to reload the bundle.

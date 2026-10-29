@@ -103,7 +103,7 @@ describe("whiteboard bundle", () => {
     assert.match(container.textContent, /Unable to open the whiteboard/);
     assert.equal(container.querySelector("button").textContent, "Try again");
     assert.ok(requests.some((req) => req.path.startsWith(
-      "/api/file/download?path=%2Fhome%2Ftest%2F.openhands%2Fapps%2Fwhiteboard%2Fboards%2Fdefault.excalidraw",
+      "/api/file/download?path=%2Fhome%2Ftest%2F.openhands%2Fapps%2Fwhiteboard%2Fboards%2Fdefault%2Fboard.excalidraw",
     )));
     cleanup();
     assert.equal(container.childElementCount, 0);

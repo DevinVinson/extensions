@@ -20,7 +20,7 @@ const UI_OPTIONS = {
   },
 };
 
-/* Hosts a DOM node owned by the shell (the save-status label) inside
+/* Hosts a DOM node owned by the shell (board picker and save status) inside
    Excalidraw's top-right toolbar slot. */
 function ShellSlot({ node }) {
   const ref = useRef(null);
@@ -31,14 +31,14 @@ function ShellSlot({ node }) {
   return createElement("div", { ref, style: { display: "flex" } });
 }
 
-function Board({ initialData, onChange, statusElement }) {
+function Board({ initialData, onChange, toolbarElement }) {
   const latest = useRef(onChange);
   latest.current = onChange;
   return createElement(Excalidraw, {
     initialData,
     langCode: "en",
     UIOptions: UI_OPTIONS,
-    renderTopRightUI: statusElement ? () => createElement(ShellSlot, { node: statusElement }) : undefined,
+    renderTopRightUI: toolbarElement ? () => createElement(ShellSlot, { node: toolbarElement }) : undefined,
     onChange: (elements, appState, files) => latest.current?.(elements, appState, files),
   }, createElement(BoardMenu));
 }
@@ -62,7 +62,7 @@ function BoardMenu() {
 }
 
 /** Mounts one Excalidraw instance into `element`; returns its disposer. */
-export function mountBoard({ element, initialData, onChange, statusElement }) {
+export function mountBoard({ element, initialData, onChange, toolbarElement }) {
   const style = document.createElement("style");
   style.dataset.whiteboard = "excalidraw";
   style.textContent = styles;
@@ -72,7 +72,7 @@ export function mountBoard({ element, initialData, onChange, statusElement }) {
   host.style.cssText = "position:absolute;inset:0";
   element.append(host);
   const root = createRoot(host);
-  root.render(createElement(Board, { initialData, onChange, statusElement }));
+  root.render(createElement(Board, { initialData, onChange, toolbarElement }));
   return () => {
     root.unmount();
     host.remove();

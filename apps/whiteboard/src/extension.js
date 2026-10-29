@@ -3,13 +3,17 @@
    is decompressed and evaluated on the first mount (see build.mjs). */
 
 import payload from "virtual:board-payload";
-import { BOARD_ID, BoardStore } from "./store.js";
+import { PICKER_STYLES, createBoardPicker } from "./picker.js";
+import { BOARD_ID, BoardStore, titleFromId } from "./store.js";
 
 const PAGE_ID = "board";
 const DEFAULT_BOARD = "default";
 const SAVE_DELAY_MS = 800;
 const ROOT_CLASS = "whiteboard-app";
 const THEME_KEY_PREFIX = "openhands.apps.whiteboard.theme";
+const LAST_BOARD_KEY_PREFIX = "openhands.apps.whiteboard.last-board";
+// How often a mount refreshes the board's "updated" time while saving.
+const META_REFRESH_MS = 60_000;
 
 const STYLES = `
 .${ROOT_CLASS} {
@@ -45,6 +49,7 @@ const STYLES = `
   cursor: pointer;
 }
 .${ROOT_CLASS}__button:focus-visible { outline: 2px solid var(--oh-focus, #fff); outline-offset: 2px; }
+.${ROOT_CLASS}__toolbar { display: flex; align-items: center; gap: 4px; }
 .${ROOT_CLASS}__status {
   display: inline-flex;
   align-items: center;
@@ -56,7 +61,7 @@ const STYLES = `
   color: var(--color-gray-60, #7a7a7a);
 }
 .${ROOT_CLASS}__status[data-state="error"] { color: var(--color-danger, #e03131); }
-`;
+${PICKER_STYLES}`;
 
 function decodeBase64(text) {
   if (typeof Uint8Array.fromBase64 === "function") return Uint8Array.fromBase64(text);
@@ -101,27 +106,31 @@ function sceneSignature(elements, appState, files) {
   return `${elements.length}:${versions}:${Object.keys(files || {}).length}:${appState.viewBackgroundColor}`;
 }
 
-/* .excalidraw files do not carry the UI theme, so it is remembered per
-   viewer and backend instead. Storage can be unavailable; dark matches
-   Canvas. */
-function readTheme(key) {
+/* Per-viewer conveniences kept in localStorage, namespaced by backend: the
+   UI theme (.excalidraw files do not carry it; dark matches Canvas) and the
+   last board opened (what the page root shows). Storage can be unavailable,
+   which only loses the convenience. */
+function readLocal(key) {
   try {
-    return localStorage.getItem(key) === "light" ? "light" : "dark";
+    return localStorage.getItem(key);
   } catch {
-    return "dark";
+    return null;
   }
 }
 
-function writeTheme(key, theme) {
+function writeLocal(key, value) {
   try {
-    localStorage.setItem(key, theme);
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
-    // Not persisting the theme is harmless.
+    // Not persisting a preference is harmless.
   }
 }
 
-function boardIdFromPath(path) {
-  const id = (path || "").replace(/^\/+|\/+$/g, "") || DEFAULT_BOARD;
+/** The board a route remainder names, the fallback for the root, or null. */
+function boardIdFromPath(path, fallback = DEFAULT_BOARD) {
+  const id = (path || "").replace(/^\/+|\/+$/g, "");
+  if (!id) return BOARD_ID.test(fallback ?? "") ? fallback : DEFAULT_BOARD;
   return BOARD_ID.test(id) ? id : null;
 }
 
@@ -151,7 +160,9 @@ export function activate(host) {
   }
   const store = new BoardStore(host);
   const themeKey = `${THEME_KEY_PREFIX}:${host.backend.id}`;
+  const lastBoardKey = `${LAST_BOARD_KEY_PREFIX}:${host.backend.id}`;
   const pageRoot = `/extensions/${encodeURIComponent(host.extension.name)}/whiteboard`;
+  const boardRoute = (id) => `${pageRoot}/${id}`;
 
   return host.registerPage(PAGE_ID, ({ container, path, navigate }) => {
     let disposed = false;
@@ -160,6 +171,8 @@ export function activate(host) {
     let pending = null; // latest unsaved serialization
     let lastSignature = null;
     let saving = Promise.resolve();
+    let metaRefreshedAt = 0;
+    let picker = null;
 
     const style = document.createElement("style");
     style.dataset.whiteboard = "shell";
@@ -168,6 +181,8 @@ export function activate(host) {
     root.className = ROOT_CLASS;
     container.append(style, root);
 
+    const toolbar = document.createElement("div");
+    toolbar.className = `${ROOT_CLASS}__toolbar`;
     const status = document.createElement("span");
     status.className = `${ROOT_CLASS}__status`;
     status.setAttribute("role", "status");
@@ -176,11 +191,11 @@ export function activate(host) {
       status.textContent = text;
     };
 
-    const boardId = boardIdFromPath(path);
+    const boardId = boardIdFromPath(path, readLocal(lastBoardKey));
     if (!boardId) {
       stateMessage(root, `"${path}" is not a valid board name.`, {
         alert: true,
-        action: { label: "Open the default board", onClick: () => navigate(pageRoot) },
+        action: { label: "Open your boards", onClick: () => navigate(pageRoot) },
       });
       return () => {
         disposed = true;
@@ -188,6 +203,19 @@ export function activate(host) {
         style.remove();
       };
     }
+
+    writeLocal(lastBoardKey, boardId);
+
+    /* Saving also stamps meta.json with the update time (which orders the
+       board list), at most once a minute per mount. The first save of a
+       board that has no metadata yet creates it. */
+    const refreshMeta = async () => {
+      if (Date.now() - metaRefreshedAt < META_REFRESH_MS) return;
+      metaRefreshedAt = Date.now();
+      const now = new Date().toISOString();
+      const meta = await store.readMeta(boardId);
+      await store.updateMeta(boardId, { createdAt: meta.createdAt ?? now, updatedAt: now });
+    };
 
     const flush = () => {
       clearTimeout(saveTimer);
@@ -197,6 +225,10 @@ export function activate(host) {
       pending = null;
       saving = saving
         .then(() => store.save(boardId, json))
+        .then(() => refreshMeta().catch(() => {
+          // The drawing is saved; a stale list order is not worth an error.
+          metaRefreshedAt = 0;
+        }))
         .then(
           () => { if (!disposed && !pending) setStatus("saved", "Saved"); },
           (err) => {
@@ -211,11 +243,29 @@ export function activate(host) {
     const start = async () => {
       stateMessage(root, "Loading whiteboard…");
       try {
-        const [board, scene] = await Promise.all([loadBoardModule(), store.load(boardId)]);
+        const [board, scene, meta] = await Promise.all([
+          loadBoardModule(),
+          store.load(boardId),
+          store.readMeta(boardId).catch(() => ({ title: titleFromId(boardId) })),
+        ]);
         if (disposed) return;
         root.replaceChildren();
         setStatus("saved", scene ? "Saved" : "New board");
-        let theme = readTheme(themeKey);
+        picker?.dispose();
+        picker = createBoardPicker({
+          store,
+          boardId,
+          openBoard: (id) => navigate(boardRoute(id)),
+          onArchived: async (id) => {
+            if (readLocal(lastBoardKey) === id) writeLocal(lastBoardKey, null);
+            const remaining = await store.list().catch(() => []);
+            if (disposed) return;
+            navigate(remaining[0] ? boardRoute(remaining[0].id) : pageRoot);
+          },
+        });
+        picker.setTitle(meta.title);
+        toolbar.replaceChildren(picker.element, status);
+        let theme = readLocal(themeKey) === "light" ? "light" : "dark";
         const initialData = {
           elements: scene?.elements ?? [],
           appState: { ...scene?.appState, theme },
@@ -224,11 +274,11 @@ export function activate(host) {
         unmountBoard = board.mountBoard({
           element: root,
           initialData,
-          statusElement: status,
+          toolbarElement: toolbar,
           onChange: (elements, appState, files) => {
             if (appState.theme !== theme) {
               theme = appState.theme;
-              writeTheme(themeKey, theme);
+              writeLocal(themeKey, theme);
             }
             const signature = sceneSignature(elements, appState, files);
             if (lastSignature === null) {
@@ -258,6 +308,7 @@ export function activate(host) {
       disposed = true;
       // Persist the last edits even when the user navigates away mid-delay.
       flush();
+      picker?.dispose();
       unmountBoard?.();
       root.remove();
       style.remove();
