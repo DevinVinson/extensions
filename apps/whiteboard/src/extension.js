@@ -264,7 +264,7 @@ export function activate(host) {
           },
         });
         picker.setTitle(meta.title);
-        toolbar.replaceChildren(picker.element, status);
+        toolbar.replaceChildren(status);
         let theme = readLocal(themeKey) === "light" ? "light" : "dark";
         const initialData = {
           elements: scene?.elements ?? [],
@@ -275,6 +275,7 @@ export function activate(host) {
           element: root,
           initialData,
           toolbarElement: toolbar,
+          menuElement: picker.element,
           onChange: (elements, appState, files) => {
             if (appState.theme !== theme) {
               theme = appState.theme;

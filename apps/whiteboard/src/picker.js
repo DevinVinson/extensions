@@ -10,10 +10,13 @@ const C = PICKER_CLASS;
 
 export const PICKER_STYLES = `
 .${C} { position: relative; display: flex; align-items: center; }
+/* Next to Excalidraw's main-menu button: beside it, and opening rightwards. */
+.${C}[data-placement="menu"] { position: absolute; top: 0; left: calc(100% + 8px); }
+.${C}[data-placement="menu"] .${C}__panel { left: 0; right: auto; }
 .${C} button, .${C} input { font: inherit; }
 .${C}__trigger {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; max-width: 220px; padding: 0 10px;
+  height: 36px; max-width: 200px; padding: 0 10px;
   border: 0; border-radius: var(--border-radius-lg, 8px);
   background: var(--island-bg-color, #fff);
   box-shadow: var(--shadow-island, 0 0 0 1px rgba(0,0,0,.1));

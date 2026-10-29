@@ -97,6 +97,14 @@ try {
     throw new Error(`Autosave did not contain the drawn rectangle: ${JSON.stringify(saved.elements)}`);
   }
 
+  // At desktop width the picker sits beside Excalidraw's main-menu button.
+  const placement = await page.$eval(".whiteboard-picker", (node) => ({
+    placement: node.dataset.placement,
+    besideMenu: !!node.parentElement?.querySelector(".main-menu-trigger, .dropdown-menu-button"),
+  }));
+  if (placement.placement !== "menu" || !placement.besideMenu) {
+    throw new Error(`Board picker is not next to the main menu: ${JSON.stringify(placement)}`);
+  }
   await page.click(".whiteboard-picker__trigger");
   await page.waitForSelector(".whiteboard-picker__item[aria-current='page']");
   await page.click(".whiteboard-picker__input");

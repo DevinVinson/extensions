@@ -17,7 +17,7 @@ The manifest declares one `board` page at `/whiteboard`.
 - `/extensions/whiteboard/whiteboard` reopens the last board you used in this browser (the `default` board the first time).
 - `/extensions/whiteboard/whiteboard/<id>` opens a specific board. Ids use lowercase letters, digits, and hyphens.
 
-The board button in Excalidraw's top-right toolbar opens the board picker:
+The board button next to Excalidraw's main-menu button opens the board picker. (In Excalidraw's compact layout, where the menu moves to the bottom bar, the button sits in the top toolbar instead.)
 
 - **Switch**: lists boards, most recently edited first.
 - **Create**: name a board. Its id is derived from the name plus a short random suffix (for example `sprint-plan-k3x9`).
